@@ -9,7 +9,7 @@ declare GETBLOCK
 declare STARTRANGE1	#starting ip address in range to scan
 declare STOPRANGE1	#ending ip address in range to scan
 declare -I DEPTH
-declare EYEWITPATH="/home/anon/Desktop/tools/EyeWitness/Python/EyeWitness.py"
+declare EYEWITPATH="/home/anon/Desktop/tools/EyeWitness/Python/EyeWitness.py"  #change this to eyewitness location   (btw, you need Eyewitness for this)
 declare BLOCK_VAR
 
 if ! [ -d ./outputFiles ]; then
