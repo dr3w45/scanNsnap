@@ -1,0 +1,151 @@
+#!/bin/bash
+
+#this program is an additional flag for scanNsnap program
+
+#overall flow: 
+	#get url from user
+		#needs a -u flag
+declare GETBLOCK
+declare STARTRANGE1	#starting ip address in range to scan
+declare STOPRANGE1	#ending ip address in range to scan
+declare -I DEPTH
+declare EYEWITPATH="/home/anon/Desktop/tools/EyeWitness/Python/EyeWitness.py"
+declare BLOCK_VAR
+
+if ! [ -d ./outputFiles ]; then
+	mkdir ./outputFiles
+fi
+
+if ! [ -d ./outputFiles/eyewitness ]; then
+	mkdir ./outputFiles/eyewitness
+fi
+#define functions-------------------------
+
+
+
+#-----
+
+
+
+#-----
+help()
+{
+        echo "Syntax: script Template [-e|h|r|p|v]"
+        echo "--flags:"
+	echo "-d	Depth.  do you wanna scan 254 ips 1.1.1.* or the entire internet *.*.*.* ?"
+        echo "-h        help"
+        echo "-r        Range of ip addresses to scan"
+        echo "-p        Port to check.  ex: 80,443,552 OR ex: 8081"
+        echo "-v        verbose"
+        echo "-u	get url from user and scan the netblock its in   ex: scanNsnap -u nexidyne.com"
+	echo
+}
+
+#end functions---------------------------------
+while getopts h:u:p:r:d: FLAG
+do
+        case "${FLAG}" in
+                h) help
+                        exit;;
+
+		d) DEPTH=${OPTARG};;  #defaults to 2 if not specified
+
+                p) PORTS=${OPTARG};;	#needs to be set
+
+                r) RANGE=${OPTARG};;	#cannot be used with -u
+
+		u) GETBLOCK=${OPTARG};;	#should take priority over -u
+        esac
+done
+
+
+#if $GETBLOCK has been overwritten 
+if ! [ -z "$GETBLOCK" ]; then
+#nslookup url from -u option to get ip address and store in $BLOCK_VAR
+	TEMP=$(nslookup "$GETBLOCK" | tail -2 | head -1| awk '{print $2}')
+	read -r BLOCK_VAR <<< "${TEMP}"
+	echo "URL ip is ${BLOCK_VAR}"
+
+#set start and stop ranges to use for masscan --range flag
+		if [ "$DEPTH" = "1" ]; then #if optarg from -d is number 1 then run code
+                	#echo "${BLOCK_VAR}"
+	                #TEMP1=$(echo "${BLOCK_VAR}")
+	                STARTRANGE1=$(echo "${BLOCK_VAR}" | cut -d '.' -f1,2,3)
+	                STARTRANGE1=$(echo "${STARTRANGE1}.0")
+        	        echo "startrange is ${STARTRANGE1}"
+			STOPRANGE1=$(echo "${BLOCK_VAR}" | cut -d '.' -f1,2,3)
+			STOPRANGE1=$(echo "${STOPRANGE1}.254")
+			echo "stoprange is ${STOPRANGE1}"
+			AUTOSCANRANGE="${STARTRANGE1}-${STOPRANGE1}"
+	                echo "${AUTOSCANRANGE}"
+
+		elif [ "$DEPTH" = "2" ]; then
+			STARTRANGE1=$(echo "${BLOCK_VAR}" | cut -d '.' -f1,2)
+	                STARTRANGE1=$(echo "${STARTRANGE1}.0.0")
+        	        echo "startrange is ${STARTRANGE1}"
+                	STOPRANGE1=$(echo "${BLOCK_VAR}" | cut -d '.' -f1,2)
+	                STOPRANGE1=$(echo "${STOPRANGE1}.254.254")
+        	        echo "stoprange is ${STOPRANGE1}"
+			AUTOSCANRANGE="${STARTRANGE1}-${STOPRANGE1}"
+	                echo "${AUTOSCANRANGE}"
+                
+		elif [ "$DEPTH" = "3" ]; then
+                	STARTRANGE1=$(echo "${BLOCK_VAR}" | cut -d '.' -f1)
+	                STARTRANGE1=$(echo "${STARTRANGE1}.0.0.0")
+        	        echo "startrange is ${STARTRANGE1}"
+                	STOPRANGE1=$(echo "${BLOCK_VAR}" | cut -d '.' -f1)
+	                STOPRANGE1=$(echo "${STOPRANGE1}.254.254.254")
+        	        echo "stoprange is ${STOPRANGE1}"
+			AUTOSCANRANGE="${STARTRANGE1}-${STOPRANGE1}"
+			echo "${AUTOSCANRANGE}"
+
+		elif [ "$DEPTH" = "4" ]; then
+			echo "If you want to scan the entire internet, get the gear.  You don't have the hardware for that, trust me.  Exit"
+			exit
+
+		else	STARTRANGE1=$(echo "${BLOCK_VAR}" | cut -d '.' -f1,2,3)
+        	        STARTRANGE1=$(echo "${STARTRANGE1}.0")
+                	echo "startrange is ${STARTRANGE1}"
+	                STOPRANGE1=$(echo "${BLOCK_VAR}" | cut -d '.' -f1,2,3)
+        	        STOPRANGE1=$(echo "${STOPRANGE1}.254")
+                	echo "stoprange is ${STOPRANGE1}"
+	                AUTOSCANRANGE="${STARTRANGE1}-${STOPRANGE1}"
+        	        echo "${AUTOSCANRANGE}"
+
+		fi
+	if [ -z "$PORTS" ]; then
+		echo "Flag -p needs to be set to specify port to scan (all ports would take a long time, so just pick one...)"
+		exit 0
+	fi
+
+	sudo masscan -vvv -p ${PORTS} --range ${AUTOSCANRANGE} -oX ./outputFiles/rawScan_${AUTOSCANRANGE}.out
+
+	#extract all live ip addresses out of masscan XML file and remove any duplicates
+	grep -Po '<address addr=\"\K[^"]+(?=\")' ./outputFiles/rawScan_${AUTOSCANRANGE}.out | awk '!x[$0]++' >> ./outputFiles/${AUTOSCANRANGE}-eyewitnessList.lst
+	sed -e "s/$/:"$PORTS"/" -i ./outputFiles/${AUTOSCANRANGE}-eyewitnessList.lst
+
+
+
+	if [ -s ./outputFiles/${AUTOSCANRANGE}-eyewitnessList.lst ] ; then
+		python3 ${EYEWITPATH} --threads 30 -d ./outputFiles/eyewitness -f ./outputFiles/${AUTOSCANRANGE}-eyewitnessList.lst
+	else
+        	echo "no live targets, nothing to do"
+        fi
+
+
+else
+	if [ -z "$RANGE" ]; then
+			echo "Flag -r needs to be set to specify range to scan like this: ex  192.168.1.1-192.168.254.254"
+		else sudo masscan -vvv -p ${PORTS} --range ${RANGE} -oX ./outputFiles/rawScan_${RANGE}.out
+		#extract all live ip addresses out of masscan XML file and remove any duplicates
+		grep -Po '<address addr=\"\K[^"]+(?=\")' ./outputFiles/rawScan_${RANGE}.out | awk '!x[$0]++' >> ./outputFiles/${RANGE}-eyewitnessList.lst
+		sed -e "s/$/:"$PORTS"/" -i ./outputFiles/${RANGE}-eyewitnessList.lst
+		if [ -s ./outputFiles/${RANGE}-eyewitnessList.lst ] ; then
+			python3 ${EYEWITPATH} --threads 30 -d ./outputFiles/eyewitness -f ./outputFiles/${RANGE}-eyewitnessList.lst
+		else
+	        	echo "no live targets, nothing to do"
+	        	find ./outputFiles -type f -size 0 -delete
+		fi
+	fi
+fi
+
